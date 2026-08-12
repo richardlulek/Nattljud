@@ -1,0 +1,54 @@
+name: Deploy till GitHub Pages
+
+on:
+  push:
+    branches: [claude/satt-upp-detta-t1j817, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# En deploy i taget; avbryt inte pågående (produktionsdeploy ska slutföras).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installera beroenden
+        run: npm ci
+
+      - name: Enhetstester
+        run: npm test
+
+      - name: Bygg (basen /Nattljud/ för projektsajten)
+        run: npm run build
+        env:
+          NATTLJUD_BASE: /Nattljud/
+
+      - name: Aktivera och konfigurera Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploya
+        id: deployment
+        uses: actions/deploy-pages@v4

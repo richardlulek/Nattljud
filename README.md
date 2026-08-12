@@ -91,7 +91,15 @@ På Android/desktop/iPad används `element.volume` direkt med mjuk kurva
 
 ## Deploy
 
-Appen är en ren statisk sajt (`dist/`). PWA kräver HTTPS. `vercel.json`
+Appen är en ren statisk sajt (`dist/`). PWA kräver HTTPS.
+
+**GitHub Pages (automatiskt):** varje push bygger, testar och deployar via
+`.github/workflows/pages.yml` till
+<https://richardlulek.github.io/Nattljud/> (byggd med
+`NATTLJUD_BASE=/Nattljud/`). Spike-sidan ligger på
+`…/Nattljud/spike.html`.
+
+**Vercel (alternativ, t.ex. för egen domän):** `vercel.json`
 innehåller redan rätt cache-headers (bl.a. `sw.js` utan cache så att
 uppdateringar når installerade användare, hashade assets som `immutable`).
 
