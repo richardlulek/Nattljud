@@ -18,13 +18,14 @@ import { appendLog, clearLog, fmtTime, loadLog, type LogEntry } from "../state/g
 import type { GuardSettings, Settings } from "../state/settings";
 import { fmtRemaining } from "./format";
 import { BackIcon } from "./icons";
+import { SoundGrid } from "./SoundGrid";
+import { VolumeSlider } from "./VolumeSlider";
 
 interface Props {
   settings: Settings;
   engineState: EngineState;
   onUpdateGuard: (g: GuardSettings) => void;
   onExit: () => void;
-  buildLayers: () => { soundId: Settings["soundId"]; volume: number }[];
 }
 
 type Fas = "intro" | "kalibrerar" | "armerad";
@@ -37,7 +38,7 @@ const KÄNSLIGHETER: { id: Sensitivity; label: string }[] = [
 
 const SPELTIDER = [10, 15, 20, 30, 45];
 
-export function GuardView({ settings, engineState, onUpdateGuard, onExit, buildLayers }: Props) {
+export function GuardView({ settings, engineState, onUpdateGuard, onExit }: Props) {
   const [fas, setFas] = useState<Fas>("intro");
   const [nivåDb, setNivåDb] = useState(-90);
   const [tröskelDb, setTröskelDb] = useState<number | null>(null);
@@ -108,22 +109,22 @@ export function GuardView({ settings, engineState, onUpdateGuard, onExit, buildL
         }
         scheduleReseed(6000);
       } else {
+        // Vaktläget spelar sitt EGET valda ljud (guard.soundId/volume).
         engine.start({
-          layers: buildLayers(),
+          layers: [{ soundId: s.guard.soundId, volume: s.guard.volume }],
           fadeInMs: 4000,
           maxVol: s.maxVol,
           timerMin: 0, // vaktläget styr stoppet, inte insomningstimern
           fadeOutMs: s.fadeOutMin * 60_000,
         });
         guardStartedRef.current = true;
-        const namn = buildLayers()
-          .map((l) => getSound(l.soundId).namn)
-          .join(" + ");
-        pushLogg(`Ljud upptäckt – spelar ${namn} i ${s.guard.playMin} min`);
+        pushLogg(
+          `Ljud upptäckt – spelar ${getSound(s.guard.soundId).namn.toLowerCase()} i ${s.guard.playMin} min`,
+        );
         scheduleReseed(9000);
       }
     },
-    [buildLayers, pushLogg, scheduleReseed],
+    [pushLogg, scheduleReseed],
   );
 
   const aktivera = useCallback(async () => {
@@ -231,61 +232,74 @@ export function GuardView({ settings, engineState, onUpdateGuard, onExit, buildL
         <p>
           Telefonen ligger framme med <strong>skärmen på</strong> och lyssnar efter gråt.
           Hörs ihållande ljud i 2–3 sekunder tonas{" "}
-          {getSound(settings.soundId).namn.toLowerCase()} in automatiskt och spelar i{" "}
-          {settings.guard.playMin} min.
-        </p>
-        <p className="dim">
-          Integritet: mikrofonen används enbart för att mäta ljud<em>nivån</em> i realtid.
-          Inget spelas in, sparas eller skickas någonstans.
-        </p>
-        <p className="dim">
-          Obs: webbappar förlorar mikrofonen när skärmen låses, därför hålls skärmen
-          tänd (Wake Lock) så länge vaktläget är på. Lägg telefonen på laddning.
+          {getSound(settings.guard.soundId).namn.toLowerCase()} in automatiskt och spelar
+          i {settings.guard.playMin} min.
         </p>
 
-        <div className="faltgrupp">
-          <span className="faltrubrik">Känslighet</span>
-          <div className="chips">
-            {KÄNSLIGHETER.map((k) => (
-              <button
-                key={k.id}
-                className={`chip${settings.guard.sensitivity === k.id ? " vald" : ""}`}
-                onClick={() => onUpdateGuard({ ...settings.guard, sensitivity: k.id })}
-              >
-                {k.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="faltgrupp">
-          <span className="faltrubrik">Speltid efter trigger</span>
-          <div className="chips">
-            {SPELTIDER.map((m) => (
-              <button
-                key={m}
-                className={`chip${settings.guard.playMin === m ? " vald" : ""}`}
-                onClick={() => onUpdateGuard({ ...settings.guard, playMin: m })}
-              >
-                {m} min
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <label className="togglerad">
-          <input
-            type="checkbox"
-            checked={settings.guard.raiseInstead}
-            onChange={(e) =>
-              onUpdateGuard({ ...settings.guard, raiseInstead: e.target.checked })
-            }
+        <section className="infosektion">
+          <h3>Ljud vid trigger</h3>
+          <SoundGrid
+            kompakt
+            vald={settings.guard.soundId}
+            onVälj={(id) => onUpdateGuard({ ...settings.guard, soundId: id })}
           />
-          <span>
-            Höj volymen vid trigger i stället för att starta från tyst
-            <span className="dim"> (använd när ljudet redan spelar hela natten)</span>
-          </span>
-        </label>
+          <VolumeSlider
+            label="Volym vid trigger"
+            value={settings.guard.volume}
+            onChange={(v) => onUpdateGuard({ ...settings.guard, volume: v })}
+          />
+          <label className="togglerad">
+            <input
+              type="checkbox"
+              checked={settings.guard.raiseInstead}
+              onChange={(e) =>
+                onUpdateGuard({ ...settings.guard, raiseInstead: e.target.checked })
+              }
+            />
+            <span>
+              Höj volymen i stället för att starta från tyst
+              <span className="dim"> (när ljudet redan spelar hela natten)</span>
+            </span>
+          </label>
+        </section>
+
+        <section className="infosektion">
+          <h3>Lyssning</h3>
+          <div className="faltgrupp">
+            <span className="faltrubrik">Känslighet</span>
+            <div className="chips">
+              {KÄNSLIGHETER.map((k) => (
+                <button
+                  key={k.id}
+                  className={`chip${settings.guard.sensitivity === k.id ? " vald" : ""}`}
+                  onClick={() => onUpdateGuard({ ...settings.guard, sensitivity: k.id })}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="faltgrupp">
+            <span className="faltrubrik">Speltid efter trigger</span>
+            <div className="chips">
+              {SPELTIDER.map((m) => (
+                <button
+                  key={m}
+                  className={`chip${settings.guard.playMin === m ? " vald" : ""}`}
+                  onClick={() => onUpdateGuard({ ...settings.guard, playMin: m })}
+                >
+                  {m} min
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <p className="dim liten">
+          Integritet: mikrofonen mäter enbart ljud<em>nivån</em> i realtid – inget spelas
+          in, sparas eller skickas. Skärmen hålls tänd (webbappar förlorar mikrofonen vid
+          låst skärm), så lägg telefonen på laddning.
+        </p>
 
         {fel && <p className="felruta">{fel}</p>}
 

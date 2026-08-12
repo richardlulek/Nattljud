@@ -21,6 +21,10 @@ export interface GuardSettings {
   playMin: number;
   /** höj volymen vid trigger i stället för att starta från tyst */
   raiseInstead: boolean;
+  /** ljud som tonas in vid trigger */
+  soundId: SoundId;
+  /** volym för triggerljudet, 0..1 */
+  volume: number;
 }
 
 export interface Settings {
@@ -51,7 +55,13 @@ export const DEFAULT_SETTINGS: Settings = {
   fadeOutMin: 3,
   maxVol: 1,
   presets: [],
-  guard: { sensitivity: "mellan", playMin: 20, raiseInstead: false },
+  guard: {
+    sensitivity: "mellan",
+    playMin: 20,
+    raiseInstead: false,
+    soundId: "rosa",
+    volume: 0.55,
+  },
 };
 
 const KEY = "nattljud:settings:v1";

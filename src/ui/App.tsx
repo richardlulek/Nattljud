@@ -185,7 +185,6 @@ export default function App() {
   };
 
   const updateGuard = (guard: GuardSettings) => upd({ guard });
-  const buildLayers = useCallback(() => layersFrom(settingsRef.current), []);
 
   /* --------------------------------------------------------------- render */
 
@@ -196,7 +195,6 @@ export default function App() {
         engineState={engineState}
         onUpdateGuard={updateGuard}
         onExit={() => setView("main")}
-        buildLayers={buildLayers}
       />
     );
   }

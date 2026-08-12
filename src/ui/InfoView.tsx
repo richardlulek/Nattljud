@@ -2,6 +2,7 @@
  * Inställningar & info: fades, mjuk maxvolymspärr, säkerhetsinfo om ljudnivå,
  * installationshjälp och integritet.
  */
+import type React from "react";
 import { engine } from "../audio/engine";
 import type { Settings } from "../state/settings";
 import { BackIcon } from "./icons";
@@ -79,6 +80,7 @@ export function InfoView({ settings, onUpdate, onExit }: Props) {
             value={Math.round(settings.maxVol * 100)}
             onChange={(e) => onUpdate({ maxVol: Number(e.target.value) / 100 })}
             aria-label="Maxvolym"
+            style={{ "--fyll": `${Math.round(settings.maxVol * 100)}%` } as React.CSSProperties}
           />
           <p className="dim liten">
             Begränsar hur högt volymreglaget kan spela – ett skydd mot trötta tummar
@@ -129,7 +131,7 @@ export function InfoView({ settings, onUpdate, onExit }: Props) {
           </a>{" "}
           som loggar exakt vad som händer, och läs README i projektet.
         </p>
-        <p className="dim liten">Nattljud v1.2 · byggd utan backend · öppen källkod i repot nattljud</p>
+        <p className="dim liten">Nattljud v1.3 · byggd utan backend · öppen källkod i repot nattljud</p>
       </section>
     </div>
   );

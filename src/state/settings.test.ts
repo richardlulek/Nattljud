@@ -51,6 +51,19 @@ describe("inställningar", () => {
     expect(s.fadeOutMin).toBe(DEFAULT_SETTINGS.fadeOutMin);
   });
 
+  it("fyller i nya vaktfält i äldre sparade guard-objekt", () => {
+    const lagring = minnesLagring();
+    lagring.setItem(
+      "nattljud:settings:v1",
+      JSON.stringify({ guard: { sensitivity: "hog", playMin: 15, raiseInstead: true } }),
+    );
+    const s = loadSettings(lagring);
+    expect(s.guard.sensitivity).toBe("hog");
+    expect(s.guard.playMin).toBe(15);
+    expect(s.guard.soundId).toBe(DEFAULT_SETTINGS.guard.soundId);
+    expect(s.guard.volume).toBe(DEFAULT_SETTINGS.guard.volume);
+  });
+
   it("överlever trasig JSON", () => {
     const lagring = minnesLagring();
     lagring.setItem("nattljud:settings:v1", "{trasigt");

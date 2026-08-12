@@ -21,9 +21,13 @@ export class MicMonitor {
     if (this.active) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        // Ingen "hjälp" från webbläsaren – baslinjelogiken vill se rå nivå,
-        // och AGC skulle förstöra jämförbarheten mellan mätningar.
-        echoCancellation: false,
+        // Ekosläckning PÅ är avgörande på iPhone: med den av väljer iOS ett
+        // "mätläge" som routar all uppspelning till ÖRONHÖGTALAREN i stället
+        // för högtalaren – triggerljudet blir då i praktiken ohörbart. Med EC
+        // på behåller iOS högtalaren, och som bonus subtraheras appens eget
+        // ljud ur mikrofonsignalen så att vakten inte triggar på sig själv.
+        echoCancellation: true,
+        // AGC och brusreducering hålls av – baslinjelogiken vill se rå nivå.
         noiseSuppression: false,
         autoGainControl: false,
       },
