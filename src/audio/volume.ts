@@ -1,11 +1,12 @@
 /**
- * Volymkurvor. Reglaget är linjärt 0..1 men örat är logaritmiskt – en kubisk
- * kurva ger fin kontroll på låga nivåer (halva reglaget ≈ -18 dB) och
- * approximerar en logaritmisk kurva utan diskontinuitet vid noll.
+ * Volymkurvor. Reglaget är linjärt 0..1 men örat är logaritmiskt – en
+ * kvadratisk kurva ger fin kontroll på låga nivåer (halva reglaget ≈ -12 dB)
+ * och approximerar en logaritmisk kurva utan diskontinuitet vid noll.
+ * (Var tidigare kubisk, men -18 dB vid halva reglaget gjorde appen för tyst.)
  */
 export function sliderToGain(v: number): number {
   const x = Math.min(1, Math.max(0, v));
-  return x * x * x;
+  return x * x;
 }
 
 /**

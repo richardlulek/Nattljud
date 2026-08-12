@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { bakeSeamlessLoop, normalizePeak } from "./loop";
+import {
+  PEAK_CEILING,
+  TARGET_RMS_DB,
+  bakeSeamlessLoop,
+  normalizeLoudness,
+  normalizePeak,
+} from "./loop";
 import { SOUNDS, renderSound } from "./sounds";
 import { effectiveGain, fadeMult, sliderToGain } from "./volume";
 import { encodeWav16Mono } from "./wav";
@@ -51,6 +57,32 @@ describe("sömlös loop", () => {
   });
 });
 
+describe("loudness-normalisering", () => {
+  it("träffar mål-RMS när limitern inte behöver bita", () => {
+    // Lågcrest-signal (sinus) hamnar helt under knät → exakt mål-RMS.
+    const n = 8000;
+    const buf = new Float32Array(n);
+    for (let i = 0; i < n; i++) buf[i] = 0.05 * Math.sin((2 * Math.PI * 50 * i) / n);
+    normalizeLoudness(buf);
+    let sumSq = 0;
+    for (let i = 0; i < n; i++) sumSq += buf[i] * buf[i];
+    const rmsDb = 20 * Math.log10(Math.sqrt(sumSq / n));
+    expect(rmsDb).toBeCloseTo(TARGET_RMS_DB, 1);
+  });
+
+  it("håller |ut| under taket även vid extrem crest", () => {
+    const buf = new Float32Array(1000).fill(0.001);
+    buf[500] = 1; // ensam spik tvingar fram kraftig uppskalning + limitering
+    normalizeLoudness(buf);
+    let peak = 0;
+    for (const s of buf) peak = Math.max(peak, Math.abs(s));
+    expect(peak).toBeLessThanOrEqual(PEAK_CEILING + 1e-6);
+    // Signalen under knät är fortfarande linjärt skalad (samma inbördes form).
+    expect(buf[0]).toBeCloseTo(buf[1], 10);
+    expect(buf[0]).toBeGreaterThan(0.001);
+  });
+});
+
 describe("volymkurvor", () => {
   it("sliderToGain är monoton med rätt ändpunkter", () => {
     expect(sliderToGain(0)).toBe(0);
@@ -61,8 +93,8 @@ describe("volymkurvor", () => {
       expect(g).toBeGreaterThanOrEqual(prev);
       prev = g;
     }
-    // Låga volymer ska vara finupplösta: halva reglaget ≈ -18 dB.
-    expect(sliderToGain(0.5)).toBeCloseTo(0.125, 3);
+    // Låga volymer ska vara finupplösta: halva reglaget ≈ -12 dB.
+    expect(sliderToGain(0.5)).toBeCloseTo(0.25, 3);
   });
 
   it("fadeMult är 0 vid 0, 1 vid 1 och monoton", () => {
@@ -78,7 +110,7 @@ describe("volymkurvor", () => {
 
   it("effectiveGain kombinerar reglage, maxvolym och fade", () => {
     expect(effectiveGain(1, 1, 1)).toBe(1);
-    expect(effectiveGain(1, 0.5, 1)).toBeCloseTo(0.125, 5);
+    expect(effectiveGain(1, 0.5, 1)).toBeCloseTo(0.25, 5);
     expect(effectiveGain(1, 1, 0)).toBe(0);
   });
 });
@@ -101,10 +133,12 @@ describe("ljudrendering", () => {
         if (a > peak) peak = a;
         sumSq += s * s;
       }
-      expect(peak).toBeLessThanOrEqual(1.0001);
-      expect(peak).toBeGreaterThan(0.5); // normaliserad, inte tyst
-      const rms = Math.sqrt(sumSq / buf.length);
-      expect(rms).toBeGreaterThan(0.005); // inte i praktiken tyst
+      expect(peak).toBeLessThanOrEqual(PEAK_CEILING + 1e-4);
+      expect(peak).toBeGreaterThan(0.5); // hörbart material, inte tyst
+      // Loudness-normaliserad: nära mål-RMS (limitern äter som mest ~1 dB).
+      const rmsDb = 20 * Math.log10(Math.sqrt(sumSq / buf.length));
+      expect(rmsDb).toBeGreaterThan(TARGET_RMS_DB - 2);
+      expect(rmsDb).toBeLessThan(TARGET_RMS_DB + 0.5);
     });
   }
 

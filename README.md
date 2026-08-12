@@ -74,7 +74,7 @@ byta blob** via ett andra, synkroniserat `<audio>`-element:
 - Fade-in vid start hoppas över (stegvisa byten på 3 s låter sämre än ingen fade).
 
 På Android/desktop/iPad används `element.volume` direkt med mjuk kurva
-(kubisk ≈ logaritmisk) och kontinuerliga fades i dB-domän.
+(kvadratisk ≈ logaritmisk) och kontinuerliga fades i dB-domän.
 
 ### Skriksensorn (vaktläge)
 

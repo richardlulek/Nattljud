@@ -35,6 +35,45 @@ export function bakeSeamlessLoop(
   return out;
 }
 
+/** Mål-RMS för alla ljud (dBFS): satt till det tätaste ljudets naturliga
+ *  nivå vid peak-normalisering, så att inget ljud sänks – övriga höjs till
+ *  samma upplevda nivå. */
+export const TARGET_RMS_DB = -12;
+/** Absolut toppnivå efter limitern (≈ -0.2 dBFS). */
+export const PEAK_CEILING = 0.98;
+/** Andel av taket där soft-clippens mättnad börjar. */
+const KNEE = 0.7;
+
+/**
+ * Loudness-normalisering med mjuk limiter. Peak-normalisering låter korta
+ * toppar (hjärtslag, regndroppar, vågbrott) diktera nivån så att hela mattan
+ * trycks ner – men örat hör medelnivån (RMS), inte toppen. Här skalas ljudet
+ * till mål-RMS och topparna tyglas med en C¹-kontinuerlig soft knee-klippare:
+ * linjär under KNEE·tak, tanh-mättnad ovanför, |ut| ≤ tak.
+ */
+export function normalizeLoudness(
+  samples: Float32Array,
+  targetRmsDb = TARGET_RMS_DB,
+  ceiling = PEAK_CEILING,
+): Float32Array {
+  let sumSq = 0;
+  for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
+  const rms = Math.sqrt(sumSq / samples.length);
+  if (rms <= 0) return samples;
+  const g = Math.pow(10, targetRmsDb / 20) / rms;
+  for (let i = 0; i < samples.length; i++) {
+    const x = samples[i] * g;
+    const a = Math.abs(x) / ceiling;
+    samples[i] =
+      a <= KNEE
+        ? x
+        : Math.sign(x) *
+          ceiling *
+          (KNEE + (1 - KNEE) * Math.tanh((a - KNEE) / (1 - KNEE)));
+  }
+  return samples;
+}
+
 /** Normalisera till given toppnivå (default 0.89 ≈ -1 dBFS). */
 export function normalizePeak(samples: Float32Array, target = 0.89): Float32Array {
   let peak = 0;

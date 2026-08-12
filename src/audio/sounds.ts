@@ -8,12 +8,12 @@
  * så att loopen är sömlös per konstruktion.
  */
 import { Biquad } from "./filters";
-import { bakeSeamlessLoop, normalizePeak } from "./loop";
+import { bakeSeamlessLoop, normalizeLoudness } from "./loop";
 import { mulberry32, signed } from "./prng";
 
 export const SR = 44100;
 /** Bumpa när DSP:n ändras så att gamla IndexedDB-cachar ogiltigförklaras. */
-export const GEN_VERSION = 1;
+export const GEN_VERSION = 2;
 
 const CROSSFADE_SEC = 0.6;
 
@@ -35,7 +35,7 @@ export interface SoundDef {
 }
 
 function finish(rendered: Float32Array, loopLen: number, fadeLen: number): Float32Array {
-  return normalizePeak(bakeSeamlessLoop(rendered, loopLen, fadeLen));
+  return normalizeLoudness(bakeSeamlessLoop(rendered, loopLen, fadeLen));
 }
 
 /** Håll filterfrekvenser säkert under Nyquist (viktigt vid låg samplerate). */
