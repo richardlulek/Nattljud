@@ -99,6 +99,11 @@ Appen är en ren statisk sajt (`dist/`). PWA kräver HTTPS.
 `NATTLJUD_BASE=/Nattljud/`). Spike-sidan ligger på
 `…/Nattljud/spike.html`.
 
+Står Pages-källan i repo-inställningarna på *Deploy from a branch* gör
+GitHub dessutom en parallell deploy av branchens råa filer; workflowen
+väntar ut den så att den byggda appen alltid vinner. Byt gärna källan till
+*GitHub Actions* (Settings → Pages) så försvinner dubbeldeployen helt.
+
 **Vercel (alternativ, t.ex. för egen domän):** `vercel.json`
 innehåller redan rätt cache-headers (bl.a. `sw.js` utan cache så att
 uppdateringar når installerade användare, hashade assets som `immutable`).

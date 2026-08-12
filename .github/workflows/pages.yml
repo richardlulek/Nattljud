@@ -9,6 +9,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read # för att kunna vänta ut ev. parallell branch-deploy
 
 # En deploy i taget; avbryt inte pågående (produktionsdeploy ska slutföras).
 concurrency:
@@ -48,6 +49,30 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+      # Om Pages står i "Deploy from a branch"-läge deployar GitHub dessutom
+      # branchens råa filer parallellt vid varje push – och den deploy som blir
+      # klar sist vinner. Vänta därför ut den innan vi deployar det byggda, så
+      # att appen alltid är det som serveras. (Byts Pages-källan till "GitHub
+      # Actions" i Settings försvinner branch-deployen och steget blir en no-op.)
+      - name: Vänta ut ev. parallell branch-deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 30); do
+            n=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+              | jq '[.workflow_runs // [] | .[]
+                     | select(.path == "dynamic/pages/pages-build-deployment")
+                     | select(.status != "completed")] | length' 2>/dev/null || echo 1)
+            if [ "$n" = "0" ]; then
+              echo "Ingen pågående branch-deploy – kör vidare."
+              exit 0
+            fi
+            echo "$n branch-deploy pågår, väntar 10 s (försök $i/30) ..."
+            sleep 10
+          done
+          echo "Timeout efter 5 min – deployar ändå."
 
       - name: Deploya
         id: deployment
