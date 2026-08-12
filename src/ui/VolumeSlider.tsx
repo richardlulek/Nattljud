@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 interface Props {
   label: string;
   value: number; // 0..1
@@ -19,6 +21,7 @@ export function VolumeSlider({ label, value, onChange }: Props) {
         value={Math.round(value * 100)}
         onChange={(e) => onChange(Number(e.target.value) / 100)}
         aria-label={label}
+        style={{ "--fyll": `${Math.round(value * 100)}%` } as CSSProperties}
       />
     </label>
   );
