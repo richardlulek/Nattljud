@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spike: bakgrundsljud</title>
+<meta name="theme-color" content="#06070c">
+<style>
+  html { background:#06070c; }
+  body {
+    margin:0; padding:20px 16px 40px; font-family:system-ui,-apple-system,sans-serif;
+    background:#06070c; color:#a8adbd; max-width:480px; margin-inline:auto; line-height:1.5;
+  }
+  h1 { font-size:1.15rem; color:#d29a56; letter-spacing:.04em; }
+  p { font-size:.92rem; }
+  .knappar { display:flex; gap:12px; margin:18px 0; }
+  button {
+    flex:1; min-height:64px; font-size:1.1rem; font-weight:600; border-radius:16px;
+    border:1px solid #6e5433; background:#221806; color:#e8b06a; cursor:pointer;
+  }
+  button.sek { background:#0d0f17; border-color:#1b1e2b; color:#a8adbd; }
+  #status { font-size:.95rem; margin:10px 0; color:#d29a56; min-height:1.4em; }
+  ol { padding-left:20px; font-size:.9rem; }
+  #logg {
+    list-style:none; padding:0; margin:10px 0; font-size:.8rem; font-family:ui-monospace,monospace;
+    max-height:40vh; overflow-y:auto; border-top:1px solid #1b1e2b;
+  }
+  #logg li { padding:4px 0; border-bottom:1px solid #14161f; color:#5f6478; }
+  #logg li b { color:#a8adbd; font-weight:600; }
+  .rensa { min-height:44px; font-size:.85rem; background:none; border:none; color:#5f6478; text-decoration:underline; }
+</style>
+</head>
+<body>
+<h1>Spike: bakgrundsljud (steg 1)</h1>
+<p>
+  Minimal testsida: ett <code>&lt;audio&gt;</code>-element loopar programgenererat
+  vitt brus (WAV-blob) med Media Session. Syftet är att verifiera det viktigaste
+  kravet innan något annat byggs.
+</p>
+<ol>
+  <li>Tryck <b>Spela</b>.</li>
+  <li>Lås skärmen i minst 10 minuter.</li>
+  <li>Ljudet ska fortsätta hela tiden, och låsskärmen ska visa "Spike – vitt brus" med paus-knapp.</li>
+  <li>Lås upp och läs loggen nedan – varje minut uppspelning loggas, liksom alla avbrott.</li>
+</ol>
+
+<div class="knappar">
+  <button id="spela">Spela</button>
+  <button id="pausa" class="sek">Pausa</button>
+</div>
+<div id="status">Redo.</div>
+
+<ul id="logg"></ul>
+<button class="rensa" id="rensa">Rensa logg</button>
+
+<script>
+(function () {
+  "use strict";
+  var SR = 44100, SEK = 15;
+
+  function byggVitBrusWav() {
+    var n = SR * SEK, data = new ArrayBuffer(44 + n * 2), v = new DataView(data);
+    function str(off, s) { for (var i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+    str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE"); str(12, "fmt ");
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+    // Vitt brus med crossfade inbakad i loopskarven (sista 0,4 s blandas mot starten).
+    var fade = Math.round(0.4 * SR), buf = new Float32Array(n), i;
+    for (i = 0; i < n; i++) buf[i] = (Math.random() * 2 - 1) * 0.5;
+    for (i = 0; i < fade; i++) {
+      var t = i / fade * Math.PI / 2;
+      buf[n - fade + i] = buf[n - fade + i] * Math.cos(t) + buf[i] * Math.sin(t);
+    }
+    for (i = 0; i < n; i++) {
+      var s = Math.max(-1, Math.min(1, buf[i]));
+      v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return new Blob([data], { type: "audio/wav" });
+  }
+
+  var NYCKEL = "nattljud:spikelogg";
+  var loggEl = document.getElementById("logg");
+  var status = document.getElementById("status");
+  var poster = [];
+  try { poster = JSON.parse(localStorage.getItem(NYCKEL) || "[]"); } catch (e) { poster = []; }
+
+  function rita() {
+    loggEl.innerHTML = poster.slice(-200).map(function (p) {
+      return "<li><b>" + p.t + "</b> " + p.txt + "</li>";
+    }).reverse().join("");
+  }
+  function logga(txt) {
+    var d = new Date();
+    var t = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2);
+    poster.push({ t: t, txt: txt });
+    if (poster.length > 400) poster = poster.slice(-400);
+    try { localStorage.setItem(NYCKEL, JSON.stringify(poster)); } catch (e) {}
+    rita();
+  }
+  rita();
+
+  var el = new Audio();
+  el.loop = true;
+  el.src = URL.createObjectURL(byggVitBrusWav());
+
+  ["play", "playing", "pause", "ended", "stalled", "suspend", "waiting", "error"].forEach(function (ev) {
+    el.addEventListener(ev, function () { logga("audio-event: " + ev); });
+  });
+  document.addEventListener("visibilitychange", function () {
+    logga("visibility: " + document.visibilityState);
+  });
+  window.addEventListener("pagehide", function () { logga("pagehide"); });
+  window.addEventListener("pageshow", function () { logga("pageshow"); });
+
+  // Minutpuls driven av timeupdate – fungerar även med låst skärm eftersom
+  // mediat spelar (JS-timers stryps, men timeupdate fortsätter).
+  var senastePuls = 0;
+  el.addEventListener("timeupdate", function () {
+    var nu = Date.now();
+    if (!el.paused && nu - senastePuls >= 60000) {
+      senastePuls = nu;
+      logga("spelar fortfarande ✓");
+    }
+  });
+
+  function mediaSession() {
+    if (!("mediaSession" in navigator)) { logga("mediaSession saknas i denna webbläsare"); return; }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "Spike – vitt brus",
+      artist: "Nattljud",
+      album: "Bakgrundstest"
+    });
+    navigator.mediaSession.setActionHandler("play", function () { el.play(); });
+    navigator.mediaSession.setActionHandler("pause", function () { el.pause(); });
+    navigator.mediaSession.playbackState = "playing";
+  }
+
+  document.getElementById("spela").addEventListener("click", function () {
+    senastePuls = Date.now();
+    el.play().then(function () {
+      status.textContent = "Spelar. Lås skärmen nu och vänta 10 min.";
+      logga("START (användargest)");
+      mediaSession();
+    }).catch(function (e) {
+      status.textContent = "play() misslyckades: " + e;
+      logga("play() FEL: " + e);
+    });
+  });
+  document.getElementById("pausa").addEventListener("click", function () {
+    el.pause();
+    status.textContent = "Pausad.";
+    if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
+  });
+  document.getElementById("rensa").addEventListener("click", function () {
+    poster = [];
+    try { localStorage.removeItem(NYCKEL); } catch (e) {}
+    rita();
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+    <title>Nattljud</title>
+    <meta
+      name="description"
+      content="Lugna ljud för bebis – vitt brus, hjärtslag, regn och mer. Fungerar offline, hela natten, utan tracking."
+    />
+    <meta name="theme-color" content="#06070c" />
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Nattljud" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Undvik vit blixt innan CSS laddats -->
+    <style>
+      html {
+        background: #06070c;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="color: #b8bcc8; font-family: system-ui; padding: 2rem">
+        Nattljud kräver JavaScript.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
