@@ -74,6 +74,28 @@ export function normalizeLoudness(
   return samples;
 }
 
+/**
+ * Stafett-kuvert för sömlös överlämning mellan två <audio>-element:
+ * equal power-fade-in över filens första `seamSec` och spegelvänd fade-ut
+ * över de sista. När element B startas i A:s utfadningsfönster är summan
+ * nivåkonstant (sin²+cos² = 1) för brus. Crossfaden ligger alltså i FILEN –
+ * ingen volymstyrning behövs vid överlämningen, vilket är kravet på iPhone
+ * där JS inte får röra elementvolymen.
+ */
+export function applyRelayEnvelope(
+  samples: Float32Array,
+  sr: number,
+  seamSec: number,
+): Float32Array {
+  const L = Math.min(Math.floor(seamSec * sr), Math.floor(samples.length / 2));
+  for (let i = 0; i < L; i++) {
+    const w = Math.sin(((i / L) * Math.PI) / 2);
+    samples[i] *= w;
+    samples[samples.length - 1 - i] *= w;
+  }
+  return samples;
+}
+
 /** Normalisera till given toppnivå (default 0.89 ≈ -1 dBFS). */
 export function normalizePeak(samples: Float32Array, target = 0.89): Float32Array {
   let peak = 0;

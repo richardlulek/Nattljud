@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PEAK_CEILING,
   TARGET_RMS_DB,
+  applyRelayEnvelope,
   bakeSeamlessLoop,
   normalizeLoudness,
   normalizePeak,
@@ -54,6 +55,26 @@ describe("sömlös loop", () => {
     const buf = new Float32Array([0.1, -0.2, 0.05]);
     normalizePeak(buf, 0.89);
     expect(Math.max(...buf.map(Math.abs))).toBeCloseTo(0.89, 5);
+  });
+});
+
+describe("stafett-kuvertet", () => {
+  it("fadar in början, ut slutet och lämnar mitten orörd", () => {
+    const sr = 1000;
+    const buf = new Float32Array(sr * 10).fill(1);
+    applyRelayEnvelope(buf, sr, 2);
+    const L = sr * 2;
+    expect(buf[0]).toBe(0);
+    expect(buf[buf.length - 1]).toBe(0);
+    expect(buf[sr * 5]).toBe(1);
+    expect(buf[L]).toBe(1); // precis efter skarven: orörd
+    // Equal power över skarven: när B:s infade (position i) överlappar A:s
+    // utfade (position N-L+i) ska summerad effekt vara konstant ≈ 1.
+    for (let i = 0; i < L; i += 97) {
+      const p = buf[i] ** 2 + buf[buf.length - L + i] ** 2;
+      expect(p).toBeGreaterThan(0.98);
+      expect(p).toBeLessThan(1.02);
+    }
   });
 });
 

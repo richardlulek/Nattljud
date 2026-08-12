@@ -8,12 +8,12 @@
  * så att loopen är sömlös per konstruktion.
  */
 import { Biquad } from "./filters";
-import { bakeSeamlessLoop, normalizeLoudness } from "./loop";
+import { applyRelayEnvelope, bakeSeamlessLoop, normalizeLoudness } from "./loop";
 import { mulberry32, signed } from "./prng";
 
 export const SR = 44100;
 /** Bumpa när DSP:n ändras så att gamla IndexedDB-cachar ogiltigförklaras. */
-export const GEN_VERSION = 2;
+export const GEN_VERSION = 3;
 
 const CROSSFADE_SEC = 0.6;
 
@@ -31,6 +31,13 @@ export interface SoundDef {
   id: SoundId;
   namn: string;
   beskrivning: string;
+  /**
+   * Stafettskarvens längd i sekunder (equal power-fade i filens ändar) för
+   * motorns tvåelements-överlämning. 0 = ingen skarv: ljudet slutar redan i
+   * tystnad (hjärtslag, hyssj) och loopas nativt – elementloopens ~100 ms
+   * långa omstartssökning hamnar då i det tysta partiet och hörs inte.
+   */
+  seamSec: number;
   render: (sr: number) => Float32Array;
 }
 
@@ -341,14 +348,14 @@ function renderHyssj(sr: number): Float32Array {
 /* ------------------------------------------------------------------------ */
 
 export const SOUNDS: SoundDef[] = [
-  { id: "vitt", namn: "Vitt brus", beskrivning: "Klassiskt jämnt brus", render: renderVitt },
-  { id: "rosa", namn: "Rosa brus", beskrivning: "Mjukare, ofta bäst för spädbarn", render: renderRosa },
-  { id: "brunt", namn: "Brunt brus", beskrivning: "Djupast och dovast", render: renderBrunt },
-  { id: "hjartslag", namn: "Hjärtslag", beskrivning: "Lugn puls, som i magen", render: renderHjartslag },
-  { id: "regn", namn: "Regn", beskrivning: "Stadigt regn mot fönster", render: renderRegn },
-  { id: "hartork", namn: "Hårtork", beskrivning: "Motorbrum och luft", render: renderHartork },
-  { id: "vagor", namn: "Havsvågor", beskrivning: "Långsamma vågor mot strand", render: renderVagor },
-  { id: "hyssj", namn: "Hyssjande", beskrivning: "Rytmiskt shhh… shhh…", render: renderHyssj },
+  { id: "vitt", namn: "Vitt brus", beskrivning: "Klassiskt jämnt brus", seamSec: 2.4, render: renderVitt },
+  { id: "rosa", namn: "Rosa brus", beskrivning: "Mjukare, ofta bäst för spädbarn", seamSec: 2.4, render: renderRosa },
+  { id: "brunt", namn: "Brunt brus", beskrivning: "Djupast och dovast", seamSec: 2.4, render: renderBrunt },
+  { id: "hjartslag", namn: "Hjärtslag", beskrivning: "Lugn puls, som i magen", seamSec: 0, render: renderHjartslag },
+  { id: "regn", namn: "Regn", beskrivning: "Stadigt regn mot fönster", seamSec: 2.4, render: renderRegn },
+  { id: "hartork", namn: "Hårtork", beskrivning: "Motorbrum och luft", seamSec: 2.4, render: renderHartork },
+  { id: "vagor", namn: "Havsvågor", beskrivning: "Långsamma vågor mot strand", seamSec: 2.4, render: renderVagor },
+  { id: "hyssj", namn: "Hyssjande", beskrivning: "Rytmiskt shhh… shhh…", seamSec: 0, render: renderHyssj },
 ];
 
 export function getSound(id: SoundId): SoundDef {
@@ -358,5 +365,7 @@ export function getSound(id: SoundId): SoundDef {
 }
 
 export function renderSound(id: SoundId, sr: number = SR): Float32Array {
-  return getSound(id).render(sr);
+  const def = getSound(id);
+  const buf = def.render(sr);
+  return def.seamSec > 0 ? applyRelayEnvelope(buf, sr, def.seamSec) : buf;
 }

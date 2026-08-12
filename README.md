@@ -50,9 +50,18 @@ public/
    mikrofonens nivåmätning i vaktläget, där skärmen ändå är tänd. Media Session
    ger titel/artist/timer och play/paus på låsskärmen.
 2. **Gapless loop.** Ljuden genereras med `loopLängd + 0,6 s` material och
-   crossfaden **bakas in i filen** (equal power). Periodiska ljud (hjärtslag,
-   hyssjande) är dessutom exakta multiplar av sin period. WAV (PCM) valdes för
-   att MP3/AAC har kodar-padding som ger hörbara glapp vid loop.
+   crossfaden **bakas in i filen** (equal power). WAV (PCM) valdes för att
+   MP3/AAC har kodar-padding som ger hörbara glapp vid loop. Men filnivån
+   räcker inte: `<audio loop>` startar om via en **sökning** som tar ~100 ms
+   (uppmätt i Chromium, hörbart även på iOS). Därför spelar motorn **stafett
+   med två element**: filens första/sista sekunder har en inbakad equal
+   power-fade, och strax före filslutet startas systerelementet – summan över
+   skarven är nivåkonstant utan att elementvolymen behöver röras (fungerar
+   därmed även på iPhone). `loop=true` behålls som skyddsnät: uteblir
+   JS-ticken faller elementet tillbaka till nativ loop i stället för tystnad.
+   Periodiska ljud (hjärtslag, hyssjande) är exakta multiplar av sin period
+   och slutar i tystnad – där loopar elementet nativt och sökglappet hamnar i
+   det tysta partiet.
 3. **Offline first.** `vite-plugin-pwa` (Workbox) precachar hela appen.
    Ljudfilerna behöver aldrig laddas ner – de genereras lokalt och cachas i
    IndexedDB (`v<GEN_VERSION>:<ljud-id>`; gamla versioner rensas automatiskt).

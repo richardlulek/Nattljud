@@ -59,7 +59,7 @@ interface Fade {
   stepMs: number;
 }
 
-const TICK_MS = 400;
+const TICK_MS = 250;
 
 function detectBakedMode(): boolean {
   if (typeof document === "undefined") return false;
@@ -79,11 +79,17 @@ export class NattEngine {
   readonly bakedMode = detectBakedMode();
 
   private els: (HTMLAudioElement | null)[] = [null, null, null, null];
-  /** vilken av A/B som är aktiv per lager (bakat läge växlar) */
+  /** vilken av A/B som är aktiv per lager (stafetten och bakat läge växlar) */
   private activeSide: (0 | 1)[] = [0, 0];
   private bakedUrls: (string | null)[] = [null, null, null, null];
   private bakeBusy = [false, false];
   private lastBakedGain = [1, 1];
+  /** stafett: är partnern laddad och redo att ta över vid loopgränsen? */
+  private prepped = [false, false];
+  /** stafett: har partnern startats i skarvfönstret? */
+  private handing = [false, false];
+  /** senaste currentTime per slot – för att upptäcka wrap */
+  private lastCt = [0, 0, 0, 0];
 
   private status: EngineStatus = "idle";
   private layers: LayerConfig[] = [];
@@ -290,6 +296,16 @@ export class NattEngine {
     for (let i = 0; i < this.layers.length; i++) {
       const el = this.el(layerSlot(i, this.activeSide[i]));
       void el.play().catch(() => undefined);
+      // Stafettpartnern tillbaka till startläge.
+      this.handing[i] = false;
+      const partner = this.els[layerSlot(i, (this.activeSide[i] === 0 ? 1 : 0) as 0 | 1)];
+      if (partner) {
+        try {
+          partner.currentTime = 0;
+        } catch {
+          /* ignorera */
+        }
+      }
     }
     this.applyElementVolumes();
     this.ensureTicking();
@@ -332,6 +348,7 @@ export class NattEngine {
     this.status = "paused";
     this.fade = null;
     this.m = 1;
+    this.handing = [false, false];
     this.updateMediaSession();
     this.notify();
   }
@@ -343,6 +360,7 @@ export class NattEngine {
     this.timer = null;
     this.startedAt = null;
     this.boost = 1;
+    this.handing = [false, false];
     this.stopTicking();
     this.updateMediaSession();
     this.notify();
@@ -405,10 +423,34 @@ export class NattEngine {
   }
 
   private detachLayer(layerIdx: number): void {
+    this.handing[layerIdx] = false;
+    this.prepped[layerIdx] = false;
     for (const side of [0, 1] as const) {
       const el = this.els[layerSlot(layerIdx, side)];
       if (el) this.pauseEl(el);
     }
+  }
+
+  /**
+   * Stafetten: gör systerelementet redo att ta över vid nästa loopgräns.
+   * Partnern får samma (skarv-enveloperade) fil, står pausad på 0 och kan
+   * därmed startas ögonblickligt inne i skarvfönstret.
+   */
+  private prepPartner(layerIdx: number, url: string): void {
+    this.handing[layerIdx] = false;
+    const cfg = this.layers[layerIdx];
+    const partner = this.el(
+      layerSlot(layerIdx, (this.activeSide[layerIdx] === 0 ? 1 : 0) as 0 | 1),
+    );
+    this.pauseEl(partner);
+    partner.loop = true;
+    if (partner.src !== url) partner.src = url;
+    try {
+      partner.currentTime = 0;
+    } catch {
+      /* före metadata – ofarligt */
+    }
+    this.prepped[layerIdx] = !!cfg && getSound(cfg.soundId).seamSec > 0;
   }
 
   private isCurrent(layerIdx: number, soundId: SoundId, seq: number): boolean {
@@ -423,6 +465,9 @@ export class NattEngine {
     const cfg = this.layers[layerIdx];
     if (!cfg) return;
     const soundId = cfg.soundId;
+    // Ingen stafett medan lagret laddar/byter ljud.
+    this.handing[layerIdx] = false;
+    this.prepped[layerIdx] = false;
     const side = this.activeSide[layerIdx];
     const el = this.el(layerSlot(layerIdx, side));
     el.loop = true;
@@ -431,8 +476,9 @@ export class NattEngine {
       const ready = getReady(soundId);
       if (ready) {
         if (el.src !== ready.url) el.src = ready.url;
-        this.applyElementVolumes();
         void el.play().catch((e) => console.warn("play misslyckades", e));
+        this.prepPartner(layerIdx, ready.url);
+        this.applyElementVolumes();
         return;
       }
       // Blob inte klar: spela tystnad direkt i gesten, byt när ljudet finns.
@@ -441,8 +487,9 @@ export class NattEngine {
       const entry = await ensureSound(soundId);
       if (!this.isCurrent(layerIdx, soundId, seq)) return;
       el.src = entry.url;
-      this.applyElementVolumes();
       void el.play().catch((e) => console.warn("play misslyckades", e));
+      this.prepPartner(layerIdx, entry.url);
+      this.applyElementVolumes();
       return;
     }
 
@@ -455,6 +502,10 @@ export class NattEngine {
       el.volume = 1;
       void el.play().catch(() => undefined);
       this.lastBakedGain[layerIdx] = gain;
+      this.prepPartner(
+        layerIdx,
+        this.makeBakedUrl(layerIdx, (side === 0 ? 1 : 0) as 0 | 1, ready.samples, gain),
+      );
       return;
     }
     el.src = getSilentUrl();
@@ -466,6 +517,10 @@ export class NattEngine {
     el.volume = 1;
     void el.play().catch(() => undefined);
     this.lastBakedGain[layerIdx] = gain;
+    this.prepPartner(
+      layerIdx,
+      this.makeBakedUrl(layerIdx, (side === 0 ? 1 : 0) as 0 | 1, entry.samples!, gain),
+    );
   }
 
   private layerGain(layerIdx: number): number {
@@ -478,11 +533,13 @@ export class NattEngine {
   private applyElementVolumes(): void {
     if (this.bakedMode) return;
     for (let i = 0; i < this.layers.length; i++) {
-      const el = this.els[layerSlot(i, this.activeSide[i])];
-      if (el) {
-        const cfg = this.layers[i];
-        const boosted = Math.min(1, cfg.volume * this.boost);
-        el.volume = effectiveGain(boosted, this.maxVol, this.m);
+      const cfg = this.layers[i];
+      const boosted = Math.min(1, cfg.volume * this.boost);
+      const vol = effectiveGain(boosted, this.maxVol, this.m);
+      // Båda sidorna: stafettpartnern ska ha rätt volym INNAN den startas.
+      for (const side of [0, 1] as const) {
+        const el = this.els[layerSlot(i, side)];
+        if (el) el.volume = vol;
       }
     }
   }
@@ -545,6 +602,15 @@ export class NattEngine {
       this.pauseEl(cur);
       this.activeSide[layerIdx] = nextSide;
       this.lastBakedGain[layerIdx] = gain;
+      // Stafettpartnern (gamla sidan) ska stå redo med samma gain.
+      this.handing[layerIdx] = false;
+      const partnerUrl = this.makeBakedUrl(layerIdx, curSide, entry.samples!, gain);
+      cur.src = partnerUrl;
+      try {
+        cur.currentTime = 0;
+      } catch {
+        /* ignorera */
+      }
     } catch (e) {
       console.warn("rebake misslyckades", e);
     } finally {
@@ -608,7 +674,10 @@ export class NattEngine {
       }
     }
 
-    // 2. Pågående fade.
+    // 2. Stafett-överlämning vid loopgränsen (ljud med inbakad skarv).
+    if (this.status === "playing" || this.status === "stopping") this.relayTick();
+
+    // 3. Pågående fade.
     const fade = this.fade;
     if (fade) {
       const p = Math.min(1, (now - fade.startAt) / fade.durMs);
@@ -625,6 +694,63 @@ export class NattEngine {
         if (!this.bakedMode) this.applyElementVolumes();
         fade.onDone?.();
       }
+    }
+  }
+
+  /**
+   * Stafetten: strax före filslutet startas systerelementet, vars fil börjar
+   * med samma equal power-fade som den aktivas fil slutar med – summan över
+   * skarven är nivåkonstant utan att elementvolymen behöver röras (fungerar
+   * därmed även i bakat läge på iPhone). Det aktiva elementet behåller
+   * loop=true som skyddsnät: om JS är för hårt strypt för att armera i tid
+   * faller det tillbaka till nativ loop (kort sökglapp) i stället för
+   * tystnad – ljudet kan aldrig dö. Efter wrap pausas det gamla elementet;
+   * dess korta läckage efter omslaget dämpas av filens egen infade.
+   */
+  private relayTick(): void {
+    for (let i = 0; i < this.layers.length; i++) {
+      if (!this.prepped[i] || this.bakeBusy[i]) continue;
+      const side = this.activeSide[i];
+      const slot = layerSlot(i, side);
+      const active = this.els[slot];
+      if (!active || active.paused) continue;
+      const dur = active.duration;
+      if (!Number.isFinite(dur) || dur <= 0) continue;
+      const ct = active.currentTime;
+      const partnerSide = (side === 0 ? 1 : 0) as 0 | 1;
+      const partner = this.els[layerSlot(i, partnerSide)];
+      if (!partner) continue;
+
+      if (!this.handing[i]) {
+        // Armera inne i skarvfönstret (+ marginal för glesa tick i bakgrund).
+        const seam = getSound(this.layers[i].soundId).seamSec;
+        if (dur - ct <= seam + 0.25 && dur - ct > 0.02) {
+          this.handing[i] = true;
+          try {
+            if (partner.currentTime !== 0) partner.currentTime = 0;
+          } catch {
+            /* ignorera */
+          }
+          void partner.play().catch(() => {
+            this.handing[i] = false;
+          });
+        }
+      } else if (ct < this.lastCt[slot] - 1) {
+        // Aktiva elementet har wrap:at (nativ loop som skyddsnät). Spelar
+        // partnern tar den över; annars fortsätter det gamla och vi försöker
+        // igen vid nästa varv.
+        if (!partner.paused) {
+          this.pauseEl(active);
+          try {
+            active.currentTime = 0;
+          } catch {
+            /* ignorera */
+          }
+          this.activeSide[i] = partnerSide;
+        }
+        this.handing[i] = false;
+      }
+      this.lastCt[slot] = ct;
     }
   }
 
